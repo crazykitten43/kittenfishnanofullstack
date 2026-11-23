@@ -27,7 +27,7 @@ class Nnue {
     int32_t sum[2][Hidden];
     int count = 0;
     static int mirror(int king) { return Features == 704 && (king & 4) ? 7 : 0; }
-    void add(int view, int piece, int square, int fileMask, int direction) {
+    int featureIndex(int view, int piece, int square, int fileMask) const {
         int channel = (color(piece) ^ view) * 6 + type(piece) - 1;
         int sq = index64(square) ^ (view ? 56 : 0) ^ fileMask;
         int feature = channel * 64 + sq;
@@ -37,7 +37,10 @@ class Nnue {
                 feature = channel * 64 - (channel / 6) * 32 +
                     (sq / 8) * 4 + ((sq & 4) ? 7 - (sq & 7) : sq & 7);
         }
-        const auto& row = model.input[feature];
+        return feature;
+    }
+    void add(int view, int piece, int square, int fileMask, int direction) {
+        const auto& row = model.input[featureIndex(view, piece, square, fileMask)];
         for (int i = 0; i < Hidden; ++i) sum[view][i] += direction * row[i];
     }
     void refreshView(const Board& b, int view) {
@@ -46,6 +49,20 @@ class Nnue {
         for (int rank = 0; rank < 128; rank += 16)
             for (int sq = rank; sq < rank + 8; ++sq)
                 if (b.square[sq]) add(view, b.square[sq], sq, fileMask, 1);
+    }
+    template<int Direction>
+    void updateMove(int view, int piece, int placed, int from, int to,
+                    int captured, int capture, int mask) {
+        const auto& fromRow = model.input[featureIndex(view, piece, from, mask)];
+        const auto& toRow = model.input[featureIndex(view, placed, to, mask)];
+        if (captured) {
+            const auto& capturedRow = model.input[featureIndex(view, captured, capture, mask)];
+            for (int i = 0; i < Hidden; ++i)
+                sum[view][i] += Direction * (toRow[i] - fromRow[i] - capturedRow[i]);
+        } else {
+            for (int i = 0; i < Hidden; ++i)
+                sum[view][i] += Direction * (toRow[i] - fromRow[i]);
+        }
     }
     void transition(const Board& child, Move move, const Undo& undo, int direction) {
         int from = move.from(), to = move.to();
@@ -64,6 +81,13 @@ class Nnue {
                 Board parent = child;
                 parent.unmake(move, undo);
                 refreshView(parent, view);
+                continue;
+            }
+            if (!castle) {
+                if (direction > 0)
+                    updateMove<1>(view, piece, placed, from, to, undo.captured, capture, fileMask);
+                else
+                    updateMove<-1>(view, piece, placed, from, to, undo.captured, capture, fileMask);
                 continue;
             }
             add(view, piece, from, fileMask, -direction);
