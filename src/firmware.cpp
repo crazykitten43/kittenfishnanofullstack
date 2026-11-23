@@ -1,6 +1,7 @@
 #ifdef ARDUINO
 #include <Arduino.h>
 #include <esp_heap_caps.h>
+#include <soc/soc_memory_layout.h>
 #include <esp_timer.h>
 #include <cstdlib>
 #include <cstring>
@@ -25,7 +26,9 @@ size_t count=0;
 TTEntry internalTable[1024]{};
 PawnEntry pawnCache[256]{};
 Hce hce{pawnCache,256};
-ExportedNnue network(exportedWeights);
+alignas(ExportedNnue) uint8_t networkStorage[sizeof(ExportedNnue)];
+ExportedModel* sramWeights;
+ExportedNnue* network;
 bool networkActive=false;
 alignas(Search) uint8_t searchStorage[sizeof(Search)];
 Search* engine;
@@ -71,9 +74,14 @@ void command(char* text) {
         networkActive=false;
         engine->setEvaluator({Hce::call,&hce});
         Serial.println("ok");
+    } else if (!std::strcmp(text,"nnue status")) {
+        Serial.printf("nnue storage %s bytes %u\n",
+                      sramWeights && esp_ptr_internal(sramWeights) ? "sram" : "unavailable",
+                      unsigned(sramWeights ? sizeof(ExportedModel) : 0));
     } else if (!std::strcmp(text,"nnue")) {
+        if (!network) { Serial.println("error nnue sram"); return; }
         networkActive=true;
-        engine->setEvaluator(network.evaluator());
+        engine->setEvaluator(network->evaluator());
         Serial.println("ok");
     } else if (!std::strncmp(text,"search ",7)) {
         const char* name=text+7;
@@ -89,7 +97,7 @@ void command(char* text) {
         char* end;
         long ms=std::strtol(text+3,&end,10);
         if (end==text+3 || *end || ms<1 || ms>60000) { Serial.println("error time"); return; }
-        if (networkActive) network.refresh(board);
+        if (networkActive) network->refresh(board);
         Result result=engine->run(board,{int(ms),32},history,count);
         char move[6];
         notation(result.move,move);
@@ -101,6 +109,11 @@ void command(char* text) {
 
 void setup() {
     Serial.begin(115200);
+    // Reserve a contiguous, byte-addressable block in internal SRAM.
+    if (void* storage=heap_caps_malloc(sizeof(ExportedModel),MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT)) {
+        sramWeights=new (storage) ExportedModel(exportedWeights);
+        network=new (networkStorage) ExportedNnue(*sramWeights);
+    }
     constexpr size_t externalEntries=size_t(KFM_TT_KIB)*1024/sizeof(TTEntry);
     auto* external=externalEntries ? static_cast<TTEntry*>(
         heap_caps_calloc(externalEntries,sizeof(TTEntry),MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT)) : nullptr;

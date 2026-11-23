@@ -2,7 +2,9 @@
 
 Chess engine firmware for the Arduino Nano ESP32. The two evaluators are
 HCE-4 and the large-run 704×128 INT16 NNUE from KittenFish Nano's
-`l4-20261121` run. The network weights are compiled into flash.
+`l4-20261121` run. The firmware stores the weights in flash and copies them
+into internal SRAM at boot. If the allocation fails, HCE-4 remains available
+and the NNUE command returns `error nnue sram`.
 
 Build and upload with PlatformIO.
 
@@ -18,6 +20,7 @@ Send one command per line over USB serial.
 | --- | --- |
 | `hce 4` | Select the HCE-4 evaluator (power-on default) |
 | `nnue` | Select the 704×128 INT16 evaluator |
+| `nnue status` | Report the NNUE weight storage location and size |
 | `search selectivepvs` | PVS with aspiration, late move reductions, shallow check extensions, and reverse futility (default) |
 | `search quietpruning` | PVS with late move reductions and reverse futility |
 | `search latemovereductions` | PVS with late move reductions at eligible non-PV nodes |
