@@ -86,7 +86,7 @@ struct TTEntry { uint64_t key; uint16_t move; int16_t score; int8_t depth; uint8
 struct Limits { int milliseconds = 0, depth = 32; uint64_t nodes = 0; };
 struct Result { Move move; int score = 0, depth = 0; uint64_t nodes = 0; };
 using Clock = uint64_t (*)();
-enum class SearchProfile { Baseline, AlphaBeta, Aspiration, Lmr };
+enum class SearchProfile { SelectivePvs, QuietPruning, LateMoveReductions, AspirationPvs };
 
 class Search {
 public:
@@ -99,7 +99,7 @@ public:
 private:
     int negamax(Board&, int depth, int ply, int alpha, int beta);
     bool stop();
-    SearchProfile profile_ = SearchProfile::Baseline;
+    SearchProfile profile_ = SearchProfile::SelectivePvs;
     Evaluator eval_;
     TTEntry* table_;
     size_t entries_;

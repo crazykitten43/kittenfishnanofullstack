@@ -78,10 +78,10 @@ void command(char* text) {
     } else if (!std::strncmp(text,"search ",7)) {
         const char* name=text+7;
         SearchProfile profile;
-        if (!std::strcmp(name,"baseline")) profile=SearchProfile::Baseline;
-        else if (!std::strcmp(name,"alphabeta")) profile=SearchProfile::AlphaBeta;
-        else if (!std::strcmp(name,"aspiration")) profile=SearchProfile::Aspiration;
-        else if (!std::strcmp(name,"lmr")) profile=SearchProfile::Lmr;
+        if (!std::strcmp(name,"selectivepvs")) profile=SearchProfile::SelectivePvs;
+        else if (!std::strcmp(name,"quietpruning")) profile=SearchProfile::QuietPruning;
+        else if (!std::strcmp(name,"latemovereductions")) profile=SearchProfile::LateMoveReductions;
+        else if (!std::strcmp(name,"aspirationpvs")) profile=SearchProfile::AspirationPvs;
         else { Serial.println("error search"); return; }
         engine->setProfile(profile);
         Serial.println("ok");

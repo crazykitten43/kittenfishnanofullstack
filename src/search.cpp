@@ -59,10 +59,12 @@ Result Search::run(Board& b, Limits limits, const uint64_t* previous, size_t cou
         break;
     }
     constexpr int aspirationWindow=40;
+    const bool aspiration=profile_==SearchProfile::SelectivePvs ||
+                          profile_==SearchProfile::AspirationPvs;
     for (int d=1;d<=std::min(limits.depth,MaxPly-2);++d) {
         root_=Move{};
         int lower=-Inf, upper=Inf;
-        if (profile_==SearchProfile::Aspiration && d>=3 && std::abs(result.score)<Mate-MaxPly) {
+        if (aspiration && d>=3 && std::abs(result.score)<Mate-MaxPly) {
             lower=result.score-aspirationWindow;
             upper=result.score+aspirationWindow;
         }
@@ -86,6 +88,9 @@ int Search::negamax(Board& b,int depth,int ply,int alpha,int beta) {
     ++nodes_;
     if (stop()) return 0;
     const bool check=b.check();
+    // Limit check extensions to the first six non-root plies.
+    if (profile_==SearchProfile::SelectivePvs && check && ply>0 && ply<=6 && depth>0)
+        ++depth;
     const bool q=depth<=0;
     keys_[ply]=b.key;
     int repeats=0;
@@ -117,6 +122,18 @@ int Search::negamax(Board& b,int depth,int ply,int alpha,int beta) {
             (slot->bound==Exact || (slot->bound==Lower && score>=beta) ||
              (slot->bound==Upper && score<=alpha))) return score;
     }
+    const bool reverseFutility=profile_==SearchProfile::SelectivePvs ||
+                               profile_==SearchProfile::QuietPruning;
+    // Verify a legal move before returning a shallow estimate.
+    if (reverseFutility && !q && !check && ply && depth<=2 &&
+        beta-alpha==1 && std::abs(beta)<Mate-MaxPly-250 && b.halfmove<90) {
+        const int estimate=eval_.score(b,eval_.context);
+        if (estimate-120*depth>=beta) {
+            b.generate(moves);
+            if (!hasLegal(b,moves)) return 0;
+            return estimate-120*depth;
+        }
+    }
     int start=alpha, best=-Inf;
     if (q && !check) {
         best=eval_.score(b,eval_.context);
@@ -136,6 +153,7 @@ int Search::negamax(Board& b,int depth,int ply,int alpha,int beta) {
         else if (m.code==killers_[ply][1].code) order=8900;
         frame.order[i]=int16_t(order);
     }
+    const bool lateReductions=profile_!=SearchProfile::AspirationPvs;
     Move bestMove;
     int legal=0;
     for (int i=0;i<moves.size;++i) {
@@ -157,7 +175,7 @@ int Search::negamax(Board& b,int depth,int ply,int alpha,int beta) {
         int score;
         // Reduce only late quiet moves at non-PV nodes. Re-search at
         // nominal depth whenever the reduced search improves alpha.
-        const bool reduce=profile_==SearchProfile::Lmr && ply && depth>=3 &&
+        const bool reduce=lateReductions && ply && depth>=3 &&
             beta-alpha==1 && legal>=4 && !check && !u.captured &&
             !m.promotion() && m.code!=ttMove.code &&
             m.code!=killers_[ply][0].code && m.code!=killers_[ply][1].code && !b.check();
@@ -165,7 +183,7 @@ int Search::negamax(Board& b,int depth,int ply,int alpha,int beta) {
             score=-negamax(b,depth-2,ply+1,-beta,-alpha);
             if (score>alpha && !stopped_)
                 score=-negamax(b,depth-1,ply+1,-beta,-alpha);
-        } else if (profile_==SearchProfile::AlphaBeta || legal==1 || q) score=-negamax(b,depth-1,ply+1,-beta,-alpha);
+        } else if (legal==1 || q) score=-negamax(b,depth-1,ply+1,-beta,-alpha);
         else {
             score=-negamax(b,depth-1,ply+1,-alpha-1,-alpha);
             if (score>alpha && score<beta && !stopped_)

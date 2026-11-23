@@ -18,10 +18,10 @@ Send one command per line over USB serial.
 | --- | --- |
 | `hce 4` | Select the HCE-4 evaluator (power-on default) |
 | `nnue` | Select the 704×128 INT16 evaluator |
-| `search baseline` | Select principal variation search (power-on default) |
-| `search alphabeta` | Use full-window alpha-beta child searches |
-| `search aspiration` | Use PVS with a ±40 centipawn aspiration window from depth 3 |
-| `search lmr` | Use PVS with late move reductions at eligible non-PV nodes |
+| `search selectivepvs` | PVS with aspiration, late move reductions, shallow check extensions, and reverse futility (default) |
+| `search quietpruning` | PVS with late move reductions and reverse futility |
+| `search latemovereductions` | PVS with late move reductions at eligible non-PV nodes |
+| `search aspirationpvs` | PVS with a ±40 centipawn aspiration window from depth 3 |
 | `start` | Reset to the starting position and clear the transposition table |
 | `fen <FEN>` | Set a position and clear the transposition table |
 | `play <move>` | Apply a coordinate move such as `e2e4` |
