@@ -29,6 +29,21 @@ Send one command per line over USB serial.
 | `fen <FEN>` | Set a position and clear the transposition table |
 | `play <move>` | Apply a coordinate move such as `e2e4` |
 | `go <ms>` | Search for 1–60000 ms and report move, score, depth, and nodes |
+| `depth <plies>` | Search to a depth of 1–32 plies with a three-second time limit |
+| `opt <mask>` | Select search optimizations and clear the transposition table |
+
+Add the values below to combine optimizations. Use `opt 0` to disable
+all six (the power-on default) and `opt 63` to enable all six. Adaptive reductions and widening
+only apply to search profiles that use LMR and aspiration, respectively.
+
+| Value | Optimization |
+| ---: | --- |
+| 1 | Order quiet moves by their cutoff history within the current search |
+| 2 | Skip capture ordering when a quiescence stand-pat cutoff is already available |
+| 4 | Cache quiescence bounds while prioritizing normal entries for replacement |
+| 8 | Reduce eligible eighth and later moves by two plies at depth four or greater |
+| 16 | Skip non-checking quiescence captures when their material gain plus 200 cp cannot reach alpha |
+| 32 | Widen a failed aspiration bound to 120 cp and then 360 cp before retrying at full width |
 
 Changing evaluator or search profile clears the transposition table. Use
 `start` or `fen` before each timed run when comparing cold-table searches.

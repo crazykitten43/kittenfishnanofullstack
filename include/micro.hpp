@@ -88,18 +88,25 @@ struct Result { Move move; int score = 0, depth = 0; uint64_t nodes = 0; };
 using Clock = uint64_t (*)();
 enum class SearchProfile { SelectivePvs, QuietPruning, LateMoveReductions, AspirationPvs };
 
+enum SearchOptimization : unsigned {
+    QuietHistory = 1, FastStandPat = 2, QuiescenceTable = 4,
+    AdaptiveLmr = 8, DeltaPruning = 16, WidenAspiration = 32
+};
+
 class Search {
 public:
     Search(Evaluator eval, TTEntry* table, size_t entries, Clock clock)
         : eval_(eval), table_(table), entries_(entries), clock_(clock) {}
     Result run(Board& board, Limits limits, const uint64_t* previous = nullptr, size_t count = 0);
     void clear();
+    void setOptimizations(unsigned mask) { optimizations_ = mask; clear(); }
     void setProfile(SearchProfile profile) { profile_ = profile; clear(); }
     void setEvaluator(Evaluator eval) { eval_ = eval; clear(); }
 private:
     int negamax(Board&, int depth, int ply, int alpha, int beta);
     bool stop();
     SearchProfile profile_ = SearchProfile::SelectivePvs;
+    unsigned optimizations_ = 0;
     Evaluator eval_;
     TTEntry* table_;
     size_t entries_;
@@ -111,6 +118,7 @@ private:
     bool stopped_;
     Move root_;
     Move killers_[MaxPly][2]{};
+    int16_t quietHistory_[2][King+1][64]{};
     struct Frame { Moves moves; int16_t order[MaxMoves]; };
     Frame frames_[MaxPly];
     uint64_t history_[MaxPly]{};

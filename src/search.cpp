@@ -2,6 +2,7 @@
 #include "weights.hpp"
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 
 namespace micro {
 namespace {
@@ -47,6 +48,7 @@ Result Search::run(Board& b, Limits limits, const uint64_t* previous, size_t cou
     for (size_t i=0;i<previousCount_ && i<b.halfmove;++i)
         history_[0]+=previous_[previousCount_-1-i];
     for (auto& row : killers_) row[0]=row[1]=Move{};
+    if (optimizations_&QuietHistory) std::memset(quietHistory_,0,sizeof(quietHistory_));
     Result result{};
     auto& moves=frames_[0].moves;
     b.generate(moves);
@@ -70,8 +72,19 @@ Result Search::run(Board& b, Limits limits, const uint64_t* previous, size_t cou
         }
         int score=negamax(b,d,0,lower,upper);
         if (!stopped_ && (score<=lower || score>=upper)) {
-            root_=Move{};
-            score=negamax(b,d,0,-Inf,Inf);
+            if (optimizations_&WidenAspiration) {
+                for (int width : {120,360}) {
+                    if (score<=lower) lower=std::max(-Inf,result.score-width);
+                    else upper=std::min(Inf,result.score+width);
+                    root_=Move{};
+                    score=negamax(b,d,0,lower,upper);
+                    if (stopped_ || (score>lower && score<upper)) break;
+                }
+            }
+            if (!stopped_ && (score<=lower || score>=upper)) {
+                root_=Move{};
+                score=negamax(b,d,0,-Inf,Inf);
+            }
         }
         if (stopped_) break;
         if (root_) result.move=root_;
@@ -113,7 +126,9 @@ int Search::negamax(Board& b,int depth,int ply,int alpha,int beta) {
     // with different draw rights. Commutative sum permits equivalent histories.
     uint64_t ttKey=b.key ^ (history_[ply]*0x9e3779b97f4a7c15ULL) ^
                    (uint64_t(b.halfmove)*0xbf58476d1ce4e5b9ULL);
-    TTEntry* slot=!q && table_ && entries_ ? &table_[tableIndex(ttKey,entries_)] : nullptr;
+    if (q) ttKey^=0x8b8b8b8bfa34a763ULL;
+    TTEntry* slot=(!q || (optimizations_&QuiescenceTable)) && table_ && entries_
+        ? &table_[tableIndex(ttKey,entries_)] : nullptr;
     Move ttMove;
     if (slot && slot->bound && slot->key==ttKey) {
         ttMove.code=slot->move;
@@ -140,6 +155,12 @@ int Search::negamax(Board& b,int depth,int ply,int alpha,int beta) {
         alpha=std::max(best,alpha);
     }
     b.generate(moves,q && !check);
+    if ((optimizations_&FastStandPat) && q && !check && best>=beta) {
+        if (hasLegal(b,moves)) return best;
+        b.generate(moves);
+        return hasLegal(b,moves) ? best : 0;
+    }
+    const bool useHistory=(optimizations_&QuietHistory) && !q;
     for (int i=0;i<moves.size;++i) {
         Move m=moves.list[i];
         int victim=type(b.square[m.to()]), attacker=type(b.square[m.from()]);
@@ -151,6 +172,7 @@ int Search::negamax(Board& b,int depth,int ply,int alpha,int beta) {
                   3*weights::material[m.promotion()];
         else if (m.code==killers_[ply][0].code) order=9000;
         else if (m.code==killers_[ply][1].code) order=8900;
+        else if (useHistory) order=quietHistory_[b.side][attacker][index64(m.to())];
         frame.order[i]=int16_t(order);
     }
     const bool lateReductions=profile_!=SearchProfile::AspirationPvs;
@@ -170,6 +192,12 @@ int Search::negamax(Board& b,int depth,int ply,int alpha,int beta) {
             b.unmake(m,u);
             return best;
         }
+        if ((optimizations_&DeltaPruning) && q && !check && u.captured &&
+            !m.promotion() && std::abs(alpha)<Mate-MaxPly-1000 &&
+            best+weights::material[type(u.captured)]+200<=alpha && !b.check()) {
+            b.unmake(m,u);
+            continue;
+        }
         history_[ply+1]=b.halfmove ? history_[ply]+u.key : 0;
         if (eval_.push) eval_.push(b,m,u,eval_.context);
         int score;
@@ -180,7 +208,8 @@ int Search::negamax(Board& b,int depth,int ply,int alpha,int beta) {
             !m.promotion() && m.code!=ttMove.code &&
             m.code!=killers_[ply][0].code && m.code!=killers_[ply][1].code && !b.check();
         if (reduce) {
-            score=-negamax(b,depth-2,ply+1,-beta,-alpha);
+            const int reduction=(optimizations_&AdaptiveLmr) && depth>=4 && legal>=8 ? 2 : 1;
+            score=-negamax(b,depth-1-reduction,ply+1,-beta,-alpha);
             if (score>alpha && !stopped_)
                 score=-negamax(b,depth-1,ply+1,-beta,-alpha);
         } else if (legal==1 || q) score=-negamax(b,depth-1,ply+1,-beta,-alpha);
@@ -199,9 +228,16 @@ int Search::negamax(Board& b,int depth,int ply,int alpha,int beta) {
         }
         alpha=std::max(alpha,score);
         if (alpha>=beta) {
-            if (!q && !u.captured && !m.promotion() && m.code!=killers_[ply][0].code) {
-                killers_[ply][1]=killers_[ply][0];
-                killers_[ply][0]=m;
+            if (!q && !u.captured && !m.promotion()) {
+                if (useHistory) {
+                    int16_t& history=quietHistory_[b.side][type(b.square[m.from()])][index64(m.to())];
+                    const int bonus=std::min(512,depth*depth*16);
+                    history+=bonus-bonus*history/8192;
+                }
+                if (m.code!=killers_[ply][0].code) {
+                    killers_[ply][1]=killers_[ply][0];
+                    killers_[ply][0]=m;
+                }
             }
             break;
         }
@@ -212,7 +248,8 @@ int Search::negamax(Board& b,int depth,int ply,int alpha,int beta) {
         b.generate(moves);
         if (!hasLegal(b,moves)) return 0;
     }
-    if (slot && (!slot->bound || slot->key!=ttKey || slot->depth<=depth || best>start))
+    if (slot && (!q || !slot->bound || slot->depth<=0) &&
+        (!slot->bound || slot->key!=ttKey || slot->depth<=depth || best>start))
         *slot={ttKey,bestMove.code,int16_t(toTT(best,ply)),int8_t(depth),
                uint8_t(best>=beta ? Lower : best<=start ? Upper : Exact)};
     return best;

@@ -93,12 +93,23 @@ void command(char* text) {
         else { Serial.println("error search"); return; }
         engine->setProfile(profile);
         Serial.println("ok");
-    } else if (!std::strncmp(text,"go ",3)) {
+    } else if (!std::strncmp(text,"opt ",4)) {
         char* end;
-        long ms=std::strtol(text+3,&end,10);
-        if (end==text+3 || *end || ms<1 || ms>60000) { Serial.println("error time"); return; }
+        long mask=std::strtol(text+4,&end,10);
+        if (end==text+4 || *end || mask<0 || mask>63) { Serial.println("error opt"); return; }
+        engine->setOptimizations(unsigned(mask));
+        Serial.println("ok");
+    } else if (!std::strncmp(text,"go ",3) || !std::strncmp(text,"depth ",6)) {
+        char* end;
+        const bool fixed=text[0]=='d';
+        const char* argument=text+(fixed ? 6 : 3);
+        long limit=std::strtol(argument,&end,10);
+        if (end==argument || *end || limit<1 || limit>(fixed ? 32 : 60000)) {
+            Serial.println(fixed ? "error depth" : "error time");
+            return;
+        }
         if (networkActive) network->refresh(board);
-        Result result=engine->run(board,{int(ms),32},history,count);
+        Result result=engine->run(board,{fixed ? 3000 : int(limit),fixed ? int(limit) : 32},history,count);
         char move[6];
         notation(result.move,move);
         Serial.printf("bestmove %s score %d depth %d nodes %llu\n",move,result.score,result.depth,
