@@ -1,1 +1,7 @@
 .pio/
+__pycache__/
+.venv/
+*.sqlite3
+*.sqlite3-*
+*.sqlite3.lock
+/benchmark.local.json

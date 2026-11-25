@@ -1,0 +1,19 @@
+{
+  "firmware": "9643fbd015dfdcbf86e3625295d731c214418d19",
+  "board_pairs": [["REPLACE_WITH_NANO_1_USB_SERIAL", "REPLACE_WITH_NANO_2_USB_SERIAL"]],
+  "engines": {"hce4": "hce 4", "nnue": "nnue"},
+  "searches": {
+    "selective-pvs": {"profile": "selectivepvs", "mask": 0},
+    "quiet-pruning": {"profile": "quietpruning", "mask": 0},
+    "late-move-reductions": {"profile": "latemovereductions", "mask": 0},
+    "aspiration-pvs": {"profile": "aspirationpvs", "mask": 0},
+    "selective-pvs-all": {"profile": "selectivepvs", "mask": 63}
+  },
+  "openings": {
+    "italian": "e2e4 e7e5 g1f3 b8c6 f1c4 f8c5",
+    "queens-gambit": "d2d4 d7d5 c2c4 e7e6 b1c3 g8f6",
+    "sicilian": "e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4"
+  },
+  "move_ms": 100,
+  "max_plies": 160
+}
