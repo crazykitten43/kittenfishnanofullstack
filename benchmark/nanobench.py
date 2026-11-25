@@ -119,8 +119,7 @@ def open_pair(stack, pair):
             raise RuntimeError(f"Expected one USB port for {number}, found {sorted(paths)}")
         port = serial.Serial(baudrate=115200, timeout=0.25, write_timeout=2, exclusive=True)
         port.port = paths.pop()
-        port.dtr = False
-        port.rts = False
+        # The Nano's USB CDC firmware needs the default DTR handshake.
         stack.enter_context(port)
         port.reset_input_buffer()
         ports.append(port)
